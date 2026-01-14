@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Planner de Estudos + Cronograma</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;padding:20px}
+.container{max-width:1200px;margin:auto}
+.tabs{display:flex;gap:4px;margin-bottom:10px}
+.tab{padding:10px 20px;background:#ddd;border-radius:6px;cursor:pointer}
+.tab.active{background:#2196F3;color:#fff}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ========== Aba 1 Styles (Planner) ========== */
+.card{background:#fff;padding:20px;border-radius:12px;box-shadow:0 4px 10px rgba(0,0,0,.1);margin-bottom:20px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+input{padding:8px;border-radius:6px;border:1px solid #ccc;flex:1}
+button{padding:6px 10px;border:none;border-radius:6px;cursor:pointer}
+.start{background:#4CAF50;color:#fff}
+.pause{background:#FF9800;color:#fff}
+.reset{background:#F44336;color:#fff}
+.delete{background:#9E9E9E;color:#fff}
+.edit{background:#2196F3;color:#fff}
+.clearAll{background:#FF5722;color:#fff;margin-top:10px}
+.materia{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee}
+.materia-info{display:flex;align-items:center;gap:12px;flex:1}
+.materia-nome{font-weight:bold;flex:1}
+.timer{width:60px;text-align:right;font-weight:bold}
+.materia-buttons button{margin-left:4px}
+
+/* ========== Aba 2 Styles (Cronograma) ========== */
+.dias{display:flex;gap:10px;flex-wrap:wrap}
+.dias label{font-size:12px}
+.cronograma{display:grid;grid-template-columns:70px repeat(7,1fr)}
+.cronograma div{border:1px solid #ddd;min-height:60px;padding:4px;font-size:12px}
+.header{background:#eee;font-weight:bold;text-align:center}
+.hora{background:#fafafa;font-weight:bold;text-align:center}
+.celula.dragover{background:#e3f2fd}
+.bloco{color:#fff;border-radius:6px;padding:4px;margin-bottom:4px;cursor:grab}
+.bloco small{display:block;font-size:10px}
+.acoes{text-align:right;margin-top:4px}
+.acoes button{font-size:10px;padding:2px 4px;margin-left:4px;background:#fff;color:#333}
+.clear{background:#F44336;color:#fff;}
+</style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" onclick="openTab(1)">📚 Planner de Estudos</div>
+  <div class="tab" onclick="openTab(2)">📅 Cronograma Semanal</div>
+</div>
+
+<div id="tab1" class="tab-content active">
+<!-- ====== Aba 1 ====== -->
+<div class="container" id="app">
+<h1>📚 Planner de Estudos</h1>
+
+<div class="card">
+<h2>Adicionar Matéria</h2>
+<div class="row">
+<input id="nome" placeholder="Nome da Matéria">
+<input id="tempo" type="number" placeholder="Tempo (min)">
+<button onclick="addMateria()">Adicionar</button>
+</div>
+</div>
+
+<div class="card"><h2>Rotina</h2><div id="lista"></div></div>
+<div class="card"><h2>🍅 Pomodoro</h2><h3 id="pomodoroTimer" style="text-align:right; min-width:60px; display:inline-block">25:00</h3>
+<button class="start" onclick="startPomodoro()">Iniciar</button>
+<button class="pause" onclick="pausePomodoro()">Pausar</button>
+<button class="reset" onclick="resetPomodoro()">Resetar</button></div>
+<div class="card"><h2>📊 Estatísticas</h2><div id="stats"></div>
+<button class="clearAll" onclick="clearAllStats()">Limpar Tudo</button>
+</div>
+</div>
+</div>
+
+<div id="tab2" class="tab-content">
+<!-- ====== Aba 2 ====== -->
+<div class="container">
+
+<h1>📅 Cronograma Semanal</h1>
+
+<div class="card">
+  <div class="row dias">
+    <label><input type="checkbox" value="Segunda"> Segunda</label>
+    <label><input type="checkbox" value="Terça"> Terça</label>
+    <label><input type="checkbox" value="Quarta"> Quarta</label>
+    <label><input type="checkbox" value="Quinta"> Quinta</label>
+    <label><input type="checkbox" value="Sexta"> Sexta</label>
+    <label><input type="checkbox" value="Sábado"> Sábado</label>
+    <label><input type="checkbox" value="Domingo"> Domingo</label>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <input type="time" id="inicio">
+    <input type="time" id="fim">
+    <input id="desc" placeholder="Atividade">
+
+    <button onclick="adicionar()">Adicionar</button>
+    <button class="clear" onclick="clearAll()">🧹 Clear All</button>
+  </div>
+</div>
+
+<div class="card">
+  <div id="cronograma" class="cronograma"></div>
+</div>
+
+</div>
+</div>
+
+<script>
+/********** TABS **********/
+function openTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n-1));
+  document.querySelectorAll('.tab-content').forEach((c,i)=>c.classList.toggle('active',i===n-1));
+}
+
+/************ ABA 1 JS (Planner) ************/
+let materias = JSON.parse(localStorage.getItem('materias')) || [];
+let stats = JSON.parse(localStorage.getItem('stats')) || {};
+let pomodoro = JSON.parse(localStorage.getItem('pomodoro')) || {total:1500,restante:1500,rodando:false,ultimoTimestamp:null};
+let pomodoroInterval = null;
+
+function salvar(){
+  localStorage.setItem('materias', JSON.stringify(materias));
+  localStorage.setItem('stats', JSON.stringify(stats));
+  localStorage.setItem('pomodoro', JSON.stringify(pomodoro));
+}
+
+function addMateria(){
+  const nomeVal = document.getElementById('nome').value.trim();
+  const tempoVal = parseInt(document.getElementById('tempo').value);
+  if(!nomeVal || !tempoVal){ alert('Preencha corretamente'); return; }
+  materias.push({nome:nomeVal,tempo:tempoVal,restante:tempoVal*60,intervalo:null,ultimoTimestamp:null});
+  document.getElementById('nome').value=''; document.getElementById('tempo').value='';
+  salvar(); render();
+}
+
+function iniciar(i){
+  if(materias[i].intervalo) return;
+  materias[i].ultimoTimestamp = Date.now();
+  materias[i].intervalo = setInterval(()=>{
+    const agora = Date.now();
+    const diff = Math.floor((agora - materias[i].ultimoTimestamp)/1000);
+    if(diff > 0){
+      materias[i].ultimoTimestamp = agora;
+      materias[i].restante -= diff;
+      stats[materias[i].nome] = (stats[materias[i].nome]||0)+diff;
+      if(materias[i].restante <= 0){
+        materias[i].restante = 0;
+        clearInterval(materias[i].intervalo);
+        materias[i].intervalo = null;
+        alert('Tempo finalizado: ' + materias[i].nome);
+      }
+      salvar(); render();
+    }
+  },200);
+}
+
+function pausar(i){ if(materias[i].intervalo){ clearInterval(materias[i].intervalo); materias[i].intervalo=null; salvar(); render(); } }
+function resetar(i){ pausar(i); materias[i].restante = materias[i].tempo*60; salvar(); render(); }
+function excluir(i){ if(!confirm('Excluir matéria?')) return; pausar(i); const nomeMat=materias[i].nome; materias.splice(i,1); delete stats[nomeMat]; salvar(); render(); }
+function editar(i){ const n=prompt('Nome:', materias[i].nome); if(n===null)return; const t=parseInt(prompt('Tempo (min):', materias[i].tempo)); if(!t)return alert('Tempo inválido'); materias[i].nome=n; materias[i].tempo=t; materias[i].restante=t*60; salvar(); render(); }
+function render(){
+  const lista = document.getElementById('lista'); lista.innerHTML='';
+  materias.forEach((m,i)=>{
+    if(m.intervalo===undefined) m.intervalo=null;
+    const div=document.createElement('div'); div.className='materia';
+    div.innerHTML=`<div class="materia-info"><span class="materia-nome">${m.nome}</span><span class="timer">${fmt(m.restante)}</span></div>
+    <div class="materia-buttons">
+    <button class="start" onclick="iniciar(${i})">▶</button>
+    <button class="pause" onclick="pausar(${i})">⏸</button>
+    <button class="reset" onclick="resetar(${i})">⟳</button>
+    <button class="edit" onclick="editar(${i})">✏️</button>
+    <button class="delete" onclick="excluir(${i})">🗑</button>
+    </div>`; lista.appendChild(div);
+  });
+  renderStats(); atualizarPomodoroUI();
+}
+function renderStats(){ const s=document.getElementById('stats'); let html=''; for(let k in stats){ html += `${k}: ${(stats[k]/3600).toFixed(2)} h<br>`; } s.innerHTML = html || 'Sem dados ainda'; }
+function clearAllStats(){ if(!confirm('Limpar todas as estatísticas?')) return; stats={}; salvar(); renderStats(); }
+function atualizarPomodoroUI(){ document.getElementById('pomodoroTimer').innerText = fmt(pomodoro.restante); }
+function startPomodoro(){ if(pomodoroInterval) return; pomodoro.rodando=true; pomodoro.ultimoTimestamp=Date.now(); salvar();
+  pomodoroInterval=setInterval(()=>{ const agora=Date.now(); const diff=Math.floor((agora-pomodoro.ultimoTimestamp)/1000); if(diff>0){ pomodoro.ultimoTimestamp=agora; pomodoro.restante-=diff; if(pomodoro.restante<=0){ pomodoro.restante=0; pausePomodoro(); alert('Pomodoro finalizado'); } salvar(); atualizarPomodoroUI(); }},200);
+}
+function pausePomodoro(){ if(pomodoroInterval){ clearInterval(pomodoroInterval); pomodoroInterval=null; pomodoro.rodando=false; pomodoro.ultimoTimestamp=null; salvar(); } }
+function resetPomodoro(){ pausePomodoro(); pomodoro.restante=pomodoro.total; salvar(); atualizarPomodoroUI(); }
+if(pomodoro.rodando){ pomodoro.rodando=false; pomodoro.ultimoTimestamp=null; salvar(); }
+function fmt(sec){ const m=Math.floor(sec/60); const s=sec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
+render();
+
+/************ ABA 2 JS (Cronograma) ************/
+const dias=['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+const horas=Array.from({length:18},(_,i)=>i+5);
+let atividades=JSON.parse(localStorage.getItem('atividades'))||[];
+let dragIndex=null;
+
+function toMin(hm){ const [h,m]=hm.split(':').map(Number); return h*60+m; }
+function corPorTexto(texto){ let hash=0; for(let i=0;i<texto.length;i++){ hash=texto.charCodeAt(i)+((hash<<5)-hash); } const hue=Math.abs(hash)%360; return `hsl(${hue},70%,45%)`; }
+function salvar(){ localStorage.setItem('materias', JSON.stringify(materias)); localStorage.setItem('stats', JSON.stringify(stats)); localStorage.setItem('pomodoro', JSON.stringify(pomodoro)); localStorage.setItem('atividades',JSON.stringify(atividades)); }
+
+function clearAll(){ if(!confirm('Deseja apagar todo o cronograma?')) return; atividades=[]; salvar(); renderCronograma(); }
+function adicionar(){
+  const diasSelecionados=[...document.querySelectorAll('.dias input:checked')].map(d=>d.value);
+  if(!inicio.value||!fim.value||!desc.value||diasSelecionados.length===0){ alert('Selecione dias, horários e descrição'); return; }
+  diasSelecionados.forEach(d=>{ atividades.push({dia:d,inicio:inicio.value,fim:fim.value,desc:desc.value}); });
+  document.querySelectorAll('.dias input').forEach(i=>i.checked=false); desc.value='';
+  salvar(); renderCronograma();
+}
+
+function dragStart(i){ dragIndex=i; }
+function dragOver(e){ e.preventDefault(); e.currentTarget.classList.add('dragover'); }
+function dragLeave(e){ e.currentTarget.classList.remove('dragover'); }
+function drop(dia,hora){ if(dragIndex===null)return; const original=atividades[dragIndex]; atividades.push({dia:dia,inicio:String(hora).padStart(2,'0')+':00',fim:String(hora).padStart(2,'0')+':00',desc:original.desc}); dragIndex=null; salvar(); renderCronograma(); }
+function editar(i){ const n=prompt('Descrição:',atividades[i].desc); const ini=prompt('Início (HH:MM):',atividades[i].inicio); const fim=prompt('Fim (HH:MM):',atividades[i].fim); if(!n||!ini||!fim)return; atividades[i]={...atividades[i],desc:n,inicio:ini,fim:fim}; salvar(); renderCronograma(); }
+function excluir(i){ if(!confirm('Excluir atividade?'))return; atividades.splice(i,1); salvar(); renderCronograma(); }
+
+function renderCronograma(){
+  const c=document.getElementById('cronograma');
+  c.innerHTML='<div></div>'+dias.map(d=>`<div class="header">${d}</div>`).join('');
+  horas.forEach(h=>{
+    const horaMin=h*60;
+    c.innerHTML+=`<div class="hora">${String(h).padStart(2,'0')}:00</div>`;
+    dias.forEach(d=>{
+      const blocos=atividades.map((a,i)=>({...a,i})).filter(a=>{ if(a.dia!==d)return false; return toMin(a.inicio)<horaMin+60 && toMin(a.fim)>horaMin; });
+      c.innerHTML+=`<div class="celula" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="drop('${d}',${h})">
+        ${blocos.map(b=>`<div class="bloco" style="background:${corPorTexto(b.desc)}" draggable="true" ondragstart="dragStart(${b.i})">
+        ${b.desc}<small>${b.inicio} - ${b.fim}</small>
+        <div class="acoes"><button onclick="editar(${b.i})">✏</button><button onclick="excluir(${b.i})">🗑</button></div></div>`).join('')}
+      </div>`;
+    });
+  });
+}
+renderCronograma();
+</script>
+
+</body>
+</html>
